@@ -327,13 +327,15 @@ const YEARLY=['newyear','tojeong'];
 let pickYear=null;
 const yearChoices=()=>{const n=new Date(),Y=n.getFullYear();return n.getMonth()>=10?[Y,Y+1]:[Y]};
 const targetYear=()=>{const c=yearChoices();return c.includes(pickYear)?pickYear:c[c.length-1]};
-const aiKey=kind=>YEARLY.includes(kind)?`y${targetYear()}|${kind}.m`:`${ymdKey(new Date())}|${kind}`;
+const aiKey=kind=>YEARLY.includes(kind)?`y${targetYear()}|${kind}.m2`:`${ymdKey(new Date())}|${kind}`;
 function pruneCache(){
  if(!data.cache)return;const n=new Date(),day=ymdKey(n),Y=n.getFullYear();
- for(const c in data.cache){const yr=(c.startsWith(`y${Y}|`)||c.startsWith(`y${Y+1}|`))&&c.endsWith('.m');if(!c.startsWith(day)&&!yr)delete data.cache[c]}
+ for(const c in data.cache){const yr=(c.startsWith(`y${Y}|`)||c.startsWith(`y${Y+1}|`))&&c.endsWith('.m2');if(!c.startsWith(day)&&!yr)delete data.cache[c]}
 }
 const yearSwitch=()=>{const c=yearChoices();if(c.length<2)return '';const Y=targetYear();
  return `<div class="seg" role="group" aria-label="볼 해 고르기">${c.map(y=>`<button data-year="${y}" aria-pressed="${y===Y}">${y}년${y>new Date().getFullYear()?' (내년)':' (올해)'}</button>`).join('')}</div>`};
+// 한 해에 한 번 받는 풀이라 달마다 자세히
+const MONTH_GUIDE=`각 달은 짧은 문장 4~5개로 자세히 써 줘: 그 달의 전체 흐름, 좋은 점이나 기회(돈·일·건강·사람 중 그 달에 두드러지는 것), 조심할 점과 대처법, 그 달에 해 보면 좋은 작은 일 하나. 달마다 내용과 표현이 겹치지 않게. 소제목은 "1월"처럼 달 이름만.`;
 function aiPrompt(kind,p){
  const n=new Date(), f=info(p), lt=lunarToday(), Y=n.getFullYear();
  const base=`이름: ${p.name}
@@ -345,12 +347,12 @@ function aiPrompt(kind,p){
  if(kind==='daily')return `[매일운세]\n${base}\nsections 순서: 총운, 재물운, 건강운, 사람 관계, 조심할 점과 대처법, 응원 한마디`;
  if(kind==='zodiac')return `[띠별운세]\n${base}\n이번 달: ${n.getMonth()+1}월\n${f.animal}띠 전체의 흐름에 ${f.y}년생의 나이대를 살짝 반영해 줘.\nsections 순서: 오늘의 운세, 이번 달 운세, 조심할 점과 대처법, 응원 한마디\nsummary는 ${f.animal}띠 오늘 운세 한 문장.`;
  const T=targetYear(), target=`풀이할 해: ${T}년 ${ganji(T)}년 (${animal(T)}의 해), 그 해 세는 나이 ${T-f.y+1}세`;
- if(kind==='newyear')return `[신년운세]\n${base}\n${target}\n${T}년 한 해의 운세를 ${f.animal}띠 ${f.gz}년생인 이 사람에게 맞춰 써 줘.\nsections 순서: 한 해 총운, 재물운, 건강운, 가족과 사람 관계, 하는 일, 1월, 2월, 3월, 4월, 5월, 6월, 7월, 8월, 9월, 10월, 11월, 12월, 조심할 점과 대처법, 응원 한마디\n달은 양력 달이야. 각 달은 1~2문장으로 짧게, 달마다 내용이 겹치지 않게. 소제목은 "1월"처럼 달 이름만.\nsummary는 ${T}년을 한 문장으로.`;
+ if(kind==='newyear')return `[신년운세]\n${base}\n${target}\n${T}년 한 해의 운세를 ${f.animal}띠 ${f.gz}년생인 이 사람에게 맞춰 써 줘.\nsections 순서: 한 해 총운, 재물운, 건강운, 가족과 사람 관계, 하는 일, 1월, 2월, 3월, 4월, 5월, 6월, 7월, 8월, 9월, 10월, 11월, 12월, 조심할 점과 대처법, 응원 한마디\n달은 양력 달이야. ${MONTH_GUIDE}\nsummary는 ${T}년을 한 문장으로.`;
  const t=tojeong(p);
  return `[토정비결]\n${base}\n${target}\n앱이 계산한 ${T}년 토정비결 괘: ${t.gua}번 (상괘 ${t.up}, 중괘 ${t.mid}, 하괘 ${t.low})
 토정비결 원문 구절을 인용하거나 지어내지 말고, 괘 번호를 바탕으로 한 해의 흐름을 쉬운 말로 풀어 줘.
 sections 순서: 한 해 총평, 1월, 2월, 3월, 4월, 5월, 6월, 7월, 8월, 9월, 10월, 11월, 12월, 응원 한마디
-달은 모두 음력 달이야. 각 달은 1~2문장으로 짧게. 소제목은 "1월"처럼 달 이름만.
+달은 모두 음력 달이야. ${MONTH_GUIDE}
 summary는 ${T}년 토정비결을 한 문장으로.`;
 }
 function aiErrText(e){
