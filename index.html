@@ -41,6 +41,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 .top{display:flex;align-items:center;gap:8px}
 .backbtn{min-width:52px;min-height:52px;border:0;border-radius:26px;background:var(--tint);font-size:26px;line-height:1}
 label{display:flex;flex-direction:column;gap:6px;font-weight:700}
+textarea{font:inherit;color:inherit;font-size:20px;font-weight:400;width:100%;border:2px solid var(--line);border-radius:14px;background:var(--surface);padding:12px 14px;resize:vertical;min-height:96px}
+textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 input[type=text],input[type=date],input[type=password],select{min-height:56px;border:2px solid var(--line);border-radius:14px;background:var(--surface);padding:0 14px;font-size:20px;font-weight:400;width:100%}
 .seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .seg button{min-height:56px;border:2px solid var(--line);border-radius:14px;background:var(--surface);font-size:20px}
@@ -215,11 +217,16 @@ const ROMAN=['0','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','
 const DECK=[...MAJOR.map((m,i)=>({label:`${ROMAN[i]} ${m[0]}`,name:m[0],up:m[1],down:m[2],art:()=>MAJOR_ART[i]()})),
  ...SUITS.flatMap((s,si)=>RANKS.map((r,ri)=>({label:`${s[0]} ${r[0]}`,name:`${s[0]} ${r[0]}`,up:`${s[1]} 쪽에서 ${r[1]}`,down:`${s[1]} 쪽에서 '${r[1]}'의 흐름이 더딤`,art:()=>minorArt(si,ri)})))];
 
+// 뽑은 카드는 덱 번호(i)와 거꾸로 여부만 폰에 저장. 오늘의 한 장은 하루 한 번, 세 장은 여러 번
 function draw(n){
  const pool=[...DECK.keys()];const out=[];
- for(let i=0;i<n;i++){const k=Math.floor(Math.random()*pool.length);out.push({...DECK[pool.splice(k,1)[0]],rev:Math.random()<.3,open:false})}
+ for(let i=0;i<n;i++){const k=Math.floor(Math.random()*pool.length);out.push({i:pool.splice(k,1)[0],rev:Math.random()<.3,open:false})}
  return out;
 }
+let tarotQ='';
+const tarotSpread=mode=>{const s=data['tarot'+mode];return s&&s.date===ymdKey(new Date())?s:null};
+const spreadCards=s=>s.cards.map(c=>({...DECK[c.i],...c}));
+const tarotPos=n=>n===3?['과거','현재','미래']:['오늘의 카드'];
 
 /* ---------- 음력 ---------- */
 const LC=window.KoreanLunarCalendar?new window.KoreanLunarCalendar():null;
@@ -327,7 +334,7 @@ const YEARLY=['newyear','tojeong'];
 let pickYear=null;
 const yearChoices=()=>{const n=new Date(),Y=n.getFullYear();return n.getMonth()>=10?[Y,Y+1]:[Y]};
 const targetYear=()=>{const c=yearChoices();return c.includes(pickYear)?pickYear:c[c.length-1]};
-const aiKey=kind=>YEARLY.includes(kind)?`y${targetYear()}|${kind}.m2`:`${ymdKey(new Date())}|${kind}`;
+const aiKey=kind=>kind==='tarot3'?`${ymdKey(new Date())}|tarot3-${(tarotSpread('3')||{}).id}`:YEARLY.includes(kind)?`y${targetYear()}|${kind}.m2`:`${ymdKey(new Date())}|${kind}`;
 function pruneCache(){
  if(!data.cache)return;const n=new Date(),day=ymdKey(n),Y=n.getFullYear();
  for(const c in data.cache){const yr=(c.startsWith(`y${Y}|`)||c.startsWith(`y${Y+1}|`))&&c.endsWith('.m2');if(!c.startsWith(day)&&!yr)delete data.cache[c]}
@@ -336,7 +343,25 @@ const yearSwitch=()=>{const c=yearChoices();if(c.length<2)return '';const Y=targ
  return `<div class="seg" role="group" aria-label="볼 해 고르기">${c.map(y=>`<button data-year="${y}" aria-pressed="${y===Y}">${y}년${y>new Date().getFullYear()?' (내년)':' (올해)'}</button>`).join('')}</div>`};
 // 한 해에 한 번 받는 풀이라 달마다 자세히
 const MONTH_GUIDE=`각 달은 짧은 문장 4~5개로 자세히 써 줘: 그 달의 전체 흐름, 좋은 점이나 기회(돈·일·건강·사람 중 그 달에 두드러지는 것), 조심할 점과 대처법, 그 달에 해 보면 좋은 작은 일 하나. 달마다 내용과 표현이 겹치지 않게. 소제목은 "1월"처럼 달 이름만.`;
+function tarotPrompt(kind,p){
+ const s=tarotSpread(kind==='tarot1'?'1':'3'), cards=spreadCards(s), pos=tarotPos(cards.length), n=new Date();
+ const lines=cards.map((c,i)=>`- ${pos[i]}: ${c.label} (${c.rev?'거꾸로':'정방향'}) — 기본 뜻: ${c.rev?c.down:c.up}`).join('\n');
+ const qa=s.q?'질문에 대한 답, ':'';
+ return `[타로 ${cards.length}장]
+이름: ${p.name}
+오늘: ${n.getFullYear()}년 ${n.getMonth()+1}월 ${n.getDate()}일 ${DAYS[n.getDay()]}요일
+궁금한 것: ${s.q||'(따로 없음. 오늘 하루와 요즘 마음을 중심으로 풀어 줘)'}
+앱이 무작위로 뽑은 카드 (카드를 바꾸거나 더하지 마):
+${lines}
+카드 이름은 그대로 써도 되지만, "죽음"·"악마"·"탑" 같은 카드도 끝과 새 시작, 정리, 변화처럼 부드럽게 풀어 줘.
+${cards.length===3?`미래 카드는 정해진 일처럼 말하지 말고 "이렇게 흘러갈 수 있어요"처럼 가능성으로.
+sections 순서: 과거 · ${cards[0].name}, 현재 · ${cards[1].name}, 미래 · ${cards[2].name}, 세 장을 함께 보면, ${qa}조심할 점과 대처법, 응원 한마디`
+:`sections 순서: ${cards[0].name} 카드 이야기, ${qa}오늘 해 보면 좋은 일, 조심할 점과 대처법, 응원 한마디`}
+${s.q?'질문에 대한 답은 질문에 맞춰 구체적으로, 하지만 단정하지 말고.':''}
+summary는 카드가 전하는 말을 한 문장으로.`;
+}
 function aiPrompt(kind,p){
+ if(kind.startsWith('tarot'))return tarotPrompt(kind,p);
  const n=new Date(), f=info(p), lt=lunarToday(), Y=n.getFullYear();
  const base=`이름: ${p.name}
 오늘: ${Y}년 ${n.getMonth()+1}월 ${n.getDate()}일 ${DAYS[n.getDay()]}요일${lt?` (음력 ${lt.leap?'윤':''}${lt.m}월 ${lt.d}일)`:''}, 일진 ${dayGanji(n)}일
@@ -382,7 +407,7 @@ async function askAI(kind){
   pruneCache();
   data.cache[k]={summary:String(out.summary||''),sections:secs};save(data);
  }catch(e){aiErr[k]=aiErrText(e)}
- finally{pendingAI[k]=false;if(['home','daily','zodiac','newyear','tojeong'].includes(view))render()}
+ finally{pendingAI[k]=false;if(['home','daily','zodiac','newyear','tojeong','tarot'].includes(view))render()}
 }
 const aiResult=kind=>data.cache&&data.cache[aiKey(kind)];
 function ensureAI(kind){const k=aiKey(kind);if(data.key&&!aiResult(kind)&&!pendingAI[k]&&!aiErr[k])askAI(kind)}
@@ -412,6 +437,7 @@ function render(){
  if(view==='zodiac')ensureAI('zodiac');
  if(view==='newyear')ensureAI('newyear');
  if(view==='tojeong'&&tojeong(data.profile))ensureAI('tojeong');
+ if(view==='tarot'&&tarot){const s=tarotSpread(tarot);if(s&&s.cards.every(c=>c.open))ensureAI('tarot'+tarot)}
 }
 function homeCard(p){
  const r=aiResult('daily'), err=aiErr[aiKey('daily')];
@@ -466,14 +492,22 @@ function paint(){
   </dl><p class="note">나머지가 0이면 나누는 수(8·6·3)로 쳐요. 태세수·월건수·일진수는 선천수로 셈해요.</p></details></div>`
   +aiBlock('tojeong','괘 풀이 (음력 열두 달)')+factsBox(p);return}
  if(view==='tarot'){
-  if(!tarot){app.innerHTML=top('타로')+`<div class="sun"><h3>마음속으로 궁금한 것을 떠올려 보세요</h3><p>준비되면 카드를 뽑아요.</p></div>
-   <button class="main" data-draw="1">오늘의 한 장 뽑기</button><button class="sub" data-draw="3">세 장 뽑기 (과거 · 현재 · 미래)</button><button class="sub" data-go="gallery">카드 78장 모두 보기</button>`;return}
-  const pos=tarot.length===3?['과거','현재','미래']:['오늘의 카드'];
-  const all=tarot.every(c=>c.open);
-  app.innerHTML=top('타로')+`<p class="muted" style="text-align:center">${all?'카드의 뜻을 살펴보세요':'카드를 눌러서 뒤집어 보세요'}</p>
-  <div class="spread ${tarot.length===1?'one':''}">${tarot.map((c,i)=>`<div><button class="card ${c.open?'open':''}" data-flip="${i}" aria-label="${pos[i]} 카드 ${c.open?esc(c.name):'뒤집기'}"><span class="inner"><span class="face backface" aria-hidden="true">星</span><span class="face front ${c.rev?'rev':''}"><span class="art">${c.open?cardSvg(c.art()):''}</span><span class="nm">${c.label}${c.rev?' ↺':''}</span></span></span></button><p class="pos">${pos[i]}</p></div>`).join('')}</div>
-  ${tarot.filter(c=>c.open).length?`<div class="box">${tarot.map((c,i)=>c.open?`<p><b>${pos[i]} · ${c.name}${c.rev?' (거꾸로)':''}</b><br>${c.rev?c.down:c.up}</p>`:'').join('')}</div>`:''}
-  ${all?aiSlot('카드 해석')+'<button class="sub" data-redraw>다시 뽑기</button>':''}`;
+  const s=tarot&&tarotSpread(tarot);
+  if(!s){tarot=null;const s1=tarotSpread('1'),s3=tarotSpread('3');
+   app.innerHTML=top('타로')+`<div class="sun"><h3>마음속으로 궁금한 것을 떠올려 보세요</h3>
+   <label>궁금한 것 (안 적어도 돼요)<textarea id="t-q" rows="3" maxlength="200" placeholder="예: 요즘 하는 일이 잘 풀릴까요?">${esc(tarotQ)}</textarea></label>
+   <p class="note">비워 두면 오늘 하루와 요즘 마음을 중심으로 풀어줘요. 적은 내용은 해석을 위해 OpenAI로 보내져요.</p></div>
+   ${s1?`<button class="main" data-tview="1">오늘의 한 장 다시 보기</button><p class="note">오늘의 한 장은 하루에 한 번만 뽑아요. 위에 적은 질문은 세 장 뽑기에 쓰여요.</p>`:`<button class="main" data-draw="1">오늘의 한 장 뽑기</button>`}
+   <button class="${s1?'main':'sub'}" data-draw="3">세 장 뽑기 (과거 · 현재 · 미래)</button>
+   ${s3?`<button class="sub" data-tview="3">아까 뽑은 세 장 다시 보기</button>`:''}
+   <button class="sub" data-go="gallery">카드 78장 모두 보기</button>`;return}
+  const cards=spreadCards(s), pos=tarotPos(cards.length);
+  const all=cards.every(c=>c.open);
+  app.innerHTML=top('타로')+(s.q?`<div class="box"><p class="muted">궁금한 것</p><p>${esc(s.q)}</p></div>`:'')+`<p class="muted" style="text-align:center">${all?'카드의 뜻을 살펴보세요':'카드를 눌러서 뒤집어 보세요'}</p>
+  <div class="spread ${cards.length===1?'one':''}">${cards.map((c,i)=>`<div><button class="card ${c.open?'open':''}" data-flip="${i}" aria-label="${pos[i]} 카드 ${c.open?esc(c.name):'뒤집기'}"><span class="inner"><span class="face backface" aria-hidden="true">星</span><span class="face front ${c.rev?'rev':''}"><span class="art">${c.open?cardSvg(c.art()):''}</span><span class="nm">${c.label}${c.rev?' ↺':''}</span></span></span></button><p class="pos">${pos[i]}</p></div>`).join('')}</div>
+  ${cards.some(c=>c.open)?`<div class="box">${cards.map((c,i)=>c.open?`<p><b>${pos[i]} · ${c.name}${c.rev?' (거꾸로)':''}</b><br>${c.rev?c.down:c.up}</p>`:'').join('')}</div>`:''}
+  ${all?aiBlock('tarot'+tarot,'카드 해석')+(tarot==='1'?'<p class="note">오늘의 한 장은 내일 다시 뽑을 수 있어요.</p>':''):''}
+  <button class="sub" data-tback>${tarot==='3'?'다른 질문으로 새로 뽑기':'타로 처음으로'}</button>`;
   return;
  }
  if(view==='gallery'){app.innerHTML=`<div class="top"><button class="backbtn" data-go="tarot" aria-label="타로로 돌아가기">‹</button><h2>카드 78장</h2></div><div class="gal">${DECK.map(c=>`<figure>${cardSvg(c.art())}<figcaption>${c.label}</figcaption></figure>`).join('')}</div>`;return}
@@ -550,12 +584,19 @@ app.addEventListener('click',e=>{
  if(t.dataset.reset==='ask'){askReset=true;render();return}
  if(t.dataset.reset==='no'){askReset=false;render();return}
  if(t.dataset.reset==='yes'){data={};save(data);try{localStorage.removeItem(KEY)}catch(e){}askReset=false;draft=null;view='setup';render();return}
- if(t.dataset.draw){tarot=draw(Number(t.dataset.draw));render();return}
- if(t.dataset.flip){const i=t.dataset.flip;if(tarot[i].open)return;tarot[i].open=true;t.querySelector('.art').innerHTML=cardSvg(tarot[i].art());t.classList.add('open');
+ if(t.dataset.draw){const n=t.dataset.draw;
+  if(n==='1'&&tarotSpread('1')){tarot='1';render();scrollTo(0,0);return}
+  const q=((document.getElementById('t-q')||{}).value||'').trim().slice(0,200);
+  data['tarot'+n]={date:ymdKey(new Date()),id:Date.now().toString(36),q,cards:draw(Number(n))};save(data);
+  tarotQ='';tarot=n;render();scrollTo(0,0);return}
+ if(t.dataset.tview){tarot=t.dataset.tview;render();scrollTo(0,0);return}
+ if(t.dataset.tback!==undefined){tarot=null;render();scrollTo(0,0);return}
+ if(t.dataset.flip){const s=tarotSpread(tarot);if(!s)return;const i=t.dataset.flip,c=s.cards[i];if(c.open)return;c.open=true;save(data);
+  t.querySelector('.art').innerHTML=cardSvg(DECK[c.i].art());t.classList.add('open');
   const slow=matchMedia('(prefers-reduced-motion: reduce)').matches?0:750;
   setTimeout(()=>{render();const b=app.querySelector(`[data-flip="${i}"]`);if(b)b.focus()},slow);return}
- if(t.dataset.redraw!==undefined){tarot=null;render();return}
 });
+app.addEventListener('input',e=>{if(e.target.id==='t-q')tarotQ=e.target.value});
 function keepFam(){
  const g=id=>document.getElementById(id);if(!famDraft||!g('g-name'))return;
  famDraft.name=g('g-name').value;famDraft.birth=[g('g-y').value,g('g-m').value,g('g-d').value].join('-');
